@@ -120,6 +120,9 @@ struct ncclProxyOp {
   void* profilerContext;
   uint64_t workCounter;
 
+  // DAG trace
+  uint64_t dagParentNodeId;  // links ProxyOp back to KernelLaunch node
+
   struct ncclProxyOp *enqNext;
 };
 
@@ -173,6 +176,10 @@ struct ncclProxySubArgs {
 
   void* recvRequestsCache[NCCL_STEPS];
   int recvRequestsSubCount;
+
+  // DAG trace
+  uint64_t dagOpNodeId;          // id of the ProxyOpBegin node
+  uint64_t dagParentNodeId;      // links back to KernelLaunch
 };
 
 struct ncclProxyArgs {

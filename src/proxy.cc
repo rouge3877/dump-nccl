@@ -15,6 +15,7 @@
 #include "profiler.h"
 #include "transport.h"
 #include "cpuset.h"
+#include "dag_trace.h"
 #include "compiler.h"
 #include "os.h"
 
@@ -428,6 +429,18 @@ static ncclResult_t ncclProxyOpToArgs(struct ncclProxyOp* op, struct ncclProxyAr
   args->proxyAppendPtr = op->connection->proxyAppendPtr;
 exit:
   if (args->pattern != ncclPatternProfiler) ncclProfilerStartProxyOpEvent(subIndex, args);
+
+  // DAG trace: emit ProxyOpBegin node, propagate parent from KernelLaunch
+  DAG_TRACE_IF({
+    sub->dagParentNodeId = op->dagParentNodeId;
+    sub->dagOpNodeId = ncclDagEmit(
+      DagLayerProxy, DagEvProxyOpBegin, op->dagParentNodeId,
+      args->opCount, 0,
+      sub->channelId, sub->peer,
+      args->protocol, args->algorithm,
+      (uint64_t)sub->nbytes, "ProxyOpBegin");
+  });
+
   return ncclSuccess;
 }
 
@@ -732,6 +745,19 @@ ncclResult_t ncclProxySaveOp(struct ncclComm* comm, struct ncclProxyOp* op, bool
 static ncclResult_t removeOp(struct ncclProxyProgressState* state, struct ncclProxyArgs** opPtr, struct ncclProxyArgs** prevOpPtr) {
   struct ncclProxyArgs* freeOp = *opPtr;
   struct ncclProxyArgs* next = freeOp->next;
+
+  // DAG trace: emit ProxyOpEnd for each sub
+  DAG_TRACE_IF({
+    for (int s = 0; s < freeOp->nsubs; s++) {
+      struct ncclProxySubArgs* sub = freeOp->subs + s;
+      ncclDagEmit(DagLayerProxy, DagEvProxyOpEnd, sub->dagOpNodeId,
+                  freeOp->opCount, 0,
+                  sub->channelId, sub->peer,
+                  freeOp->protocol, freeOp->algorithm,
+                  (uint64_t)sub->nbytes, "ProxyOpEnd");
+    }
+  });
+
   DEBUG_PROXY_PRINT("Remove %ld -> %ld -> %ld\n", OP_INDEX(*prevOpPtr), OP_INDEX(freeOp), OP_INDEX(next));
   *opPtr = next;
   if (freeOp->nextPeer) {

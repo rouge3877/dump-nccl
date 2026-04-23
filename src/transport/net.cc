@@ -19,6 +19,7 @@
 #include "compiler.h"
 #include <assert.h>
 #include "register_inline.h"
+#include "dag_trace.h"
 
 static_assert(sizeof(ncclNetHandle_t) <= CONNECT_SIZE, "NET Connect info is too large");
 
@@ -1295,6 +1296,14 @@ static ncclResult_t sendProxyProgress(struct ncclProxyState* proxyState, struct 
           sub->posted += args->sliceSteps;
         }
         ncclProfilerRecordProxyStepEventState(s, args, postedStepId, ncclProfilerProxyStepSendGPUWait);
+
+        DAG_TRACE_IF({
+          ncclDagEmit(DagLayerProxy, DagEvProxySendPost, sub->dagOpNodeId,
+                      args->opCount, 0, sub->channelId, sub->peer,
+                      args->protocol, args->algorithm,
+                      0, "SendPost");
+        });
+
         args->idle = 0;
         continue;
       }
@@ -1355,6 +1364,14 @@ static ncclResult_t sendProxyProgress(struct ncclProxyState* proxyState, struct 
               sub->transSize = size;
               sub->transmitted += args->sliceSteps;
               ncclProfilerRecordProxyStepEventState(s, args, transmittedStepId, ncclProfilerProxyStepSendWait);
+
+              DAG_TRACE_IF({
+                ncclDagEmit(DagLayerProxy, DagEvProxySendXmit, sub->dagOpNodeId,
+                            args->opCount, 0, sub->channelId, sub->peer,
+                            args->protocol, args->algorithm,
+                            (uint64_t)size, "SendXmit");
+              });
+
               args->idle = 0;
               continue;
             }
@@ -1374,6 +1391,13 @@ static ncclResult_t sendProxyProgress(struct ncclProxyState* proxyState, struct 
           TRACE(NCCL_NET, "sendProxy [%ld/%d/%d] request %p done", sub->done, buffSlot, sub->nsteps, sub->requests[buffSlot]);
           sub->done += args->sliceSteps;
           ncclProfilerStopProxyStepEvent(s, args, doneStepId);
+
+          DAG_TRACE_IF({
+            ncclDagEmit(DagLayerProxy, DagEvProxySendDone, sub->dagOpNodeId,
+                        args->opCount, 0, sub->channelId, sub->peer,
+                        args->protocol, args->algorithm,
+                        0, "SendDone");
+          });
 
           if (resources->shared == 0) {
             volatile uint64_t* sendHead = resources->gdcSync ? resources->gdcSync : &resources->sendMem->head;
@@ -1519,6 +1543,13 @@ static ncclResult_t recvProxyProgress(struct ncclProxyState* proxyState, struct 
             TRACE(NCCL_NET, "recvProxy [%ld/%ld/%d] Irecv posted, buff %p, size %ld, myRank %d, channelId %d, mhandle %p", sub->posted, (sub->base + sub->posted) % NCCL_STEPS, sub->nsteps, ptrs[i], sizes[i], proxyState->tpRank, sub->channelId, mhandles[i]);
             sub->posted += args->sliceSteps;
             ncclProfilerRecordProxyStepEventState(s+i, args, postedStepId, ncclProfilerProxyStepRecvWait);
+
+            DAG_TRACE_IF({
+              ncclDagEmit(DagLayerProxy, DagEvProxyRecvPost, sub->dagOpNodeId,
+                          args->opCount, 0, sub->channelId, sub->peer,
+                          args->protocol, args->algorithm,
+                          0, "RecvPost");
+            });
           }
           args->idle = 0;
         }
@@ -1550,6 +1581,14 @@ static ncclResult_t recvProxyProgress(struct ncclProxyState* proxyState, struct 
             sub->transSize = sizes[i];
             sub->received += args->sliceSteps;
             ncclProfilerRecordProxyStepEventState(s+i, args, receivedStepId, ncclProfilerProxyStepRecvFlushWait);
+
+            DAG_TRACE_IF({
+              ncclDagEmit(DagLayerProxy, DagEvProxyRecvRecv, sub->dagOpNodeId,
+                          args->opCount, 0, sub->channelId, sub->peer,
+                          args->protocol, args->algorithm,
+                          (uint64_t)sizes[i], "RecvRecv");
+            });
+
             if (step < sub->nsteps) {
               struct recvNetResources* resources = (struct recvNetResources*) (sub->connection->transportResources);
               if (resources->useGdr) needFlush |= resources->needFlush;
@@ -1613,6 +1652,14 @@ static ncclResult_t recvProxyProgress(struct ncclProxyState* proxyState, struct 
 
             sub->transmitted += args->sliceSteps;
             ncclProfilerRecordProxyStepEventState(s+i, args, transmittedStepId, ncclProfilerProxyStepRecvGPUWait);
+
+            DAG_TRACE_IF({
+              ncclDagEmit(DagLayerProxy, DagEvProxyRecvXmit, sub->dagOpNodeId,
+                          args->opCount, 0, sub->channelId, sub->peer,
+                          args->protocol, args->algorithm,
+                          0, "RecvXmit");
+            });
+
             if (step < sub->nsteps) {
               std::atomic_thread_fence(std::memory_order_seq_cst);
               struct recvNetResources* resources = (struct recvNetResources*) (sub->connection->transportResources);
@@ -1648,6 +1695,14 @@ static ncclResult_t recvProxyProgress(struct ncclProxyState* proxyState, struct 
             int doneStepId = sub->done;
             sub->done += args->sliceSteps;
             ncclProfilerStopProxyStepEvent(s+i, args, doneStepId);
+
+            DAG_TRACE_IF({
+              ncclDagEmit(DagLayerProxy, DagEvProxyRecvDone, sub->dagOpNodeId,
+                          args->opCount, 0, sub->channelId, sub->peer,
+                          args->protocol, args->algorithm,
+                          0, "RecvDone");
+            });
+
             args->idle = 0;
             if (sub->done == sub->nsteps) {
               args->done++;
