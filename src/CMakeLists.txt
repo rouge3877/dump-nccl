@@ -1,9 +1,13 @@
+# DAG trace compile-time switch (set -DNCCL_DAG_TRACE=ON to enable)
+option(NCCL_DAG_TRACE "Enable DAG trace instrumentation" OFF)
+
 # Source files
 set(LIBSRCFILES
     bootstrap.cc
     channel.cc
     ce_coll.cc
     collectives.cc
+    dag_trace.cc
     debug.cc
     enqueue.cc
     group.cc
@@ -16,6 +20,13 @@ set(LIBSRCFILES
     dev_runtime.cc
     mem_manager.cc
 )
+
+if(NCCL_DAG_TRACE)
+    add_compile_definitions(NCCL_DAG_TRACE_ENABLED=1)
+    message(STATUS "NCCL DAG trace: ENABLED")
+else()
+    add_compile_definitions(NCCL_DAG_TRACE_ENABLED=0)
+endif()
 
 # Add NVTX support if enabled
 if(NVTX)

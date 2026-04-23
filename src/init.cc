@@ -38,6 +38,7 @@
 #include "os.h"
 #include "env.h"
 #include "rma/rma.h"
+#include "dag_trace.h"
 
 #define STR2(v) #v
 #define STR(v) STR2(v)
@@ -1466,6 +1467,12 @@ static ncclResult_t initTransportsRank(struct ncclComm* comm, struct ncclComm* p
     topParentLocalRanks[i] = comm->sharedRes->tpRankToLocalRank[tpRank];
   }
   comm->topParentLocalRanks = topParentLocalRanks;
+
+  // DAG trace: initialize once per process (thread-safe, idempotent)
+  {
+    static std::once_flag dagOnce;
+    std::call_once(dagOnce, ncclDagTraceInit);
+  }
 
   // Profiler plugin context has to be initialized before proxy thread
   NCCLCHECK(ncclProfilerPluginInit(comm));
