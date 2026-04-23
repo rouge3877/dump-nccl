@@ -9,6 +9,7 @@
 #include "common.h"
 #include "compiler.h"
 #include "p2p_resiliency.h"
+#include "dag_trace.h"
 
 NCCL_PARAM(IbArThreshold, "IB_AR_THRESHOLD", -2);
 int64_t ncclIbArThreshold = 8192;
@@ -236,6 +237,12 @@ ncclResult_t ncclIbMultiSend(struct ncclIbSendComm* comm, int slot) {
     }
 #endif // ENABLE_TRACE
     NCCLCHECK(wrap_ibv_post_send(qp->qp, comm->wrs, &bad_wr));
+
+    DAG_TRACE_IF({
+      ncclDagEmit(DagLayerNetwork, DagEvNetPostSend, DAG_INVALID_NODE,
+                  0, 0, -1, -1, 0, 0,
+                  (uint64_t)reqs[0]->send.size, "ibv_post_send");
+    });
 
     // Update the send offset and addresses for the next QP according to the
     // actual data size that was sent on the current QP, for every request
@@ -493,6 +500,14 @@ ncclResult_t ncclIbIrecv(void* recvComm, int n, void** data, size_t* sizes, int*
   NCCLCHECK(ncclIbPostFifo(comm, req, slot));
   comm->base.fifoHead++;
   TIME_STOP(2);
+
+  DAG_TRACE_IF({
+    size_t totalSize = 0;
+    for (int i = 0; i < n; i++) totalSize += sizes[i];
+    ncclDagEmit(DagLayerNetwork, DagEvNetPostRecv, DAG_INVALID_NODE,
+                0, 0, -1, -1, 0, 0,
+                (uint64_t)totalSize, "ibv_irecv");
+  });
 
   *request = req;
   return ncclSuccess;
@@ -789,6 +804,12 @@ ncclResult_t ncclIbTest(void* request, int* done, int* sizes) {
         } else {
           TRACE(NCCL_NET, "NET/IB: %s: Processing a completion event (devIndex=%d, comm=%p (%s), req=%p, wr_id=%lu, qp_num=%d)", __func__, i, r->base, r->base->isSend ? "send" : "recv", r, wc->wr_id, wc->qp_num);
           NCCLCHECK(ncclIbCompletionEventProcess(r->base, wc, i));
+
+          DAG_TRACE_IF({
+            ncclDagEmit(DagLayerNetwork, DagEvNetPollCqDone, DAG_INVALID_NODE,
+                        0, 0, -1, -1, 0, 0,
+                        (uint64_t)wc->byte_len, "ibv_poll_cq");
+          });
         }
       }
       // Once the IB fatal event is reported in the async thread, we want to propagate this error
