@@ -21,6 +21,7 @@
 #include <chrono>
 #include <thread>
 #include "os.h"
+#include "dag_trace.h"
 
 #define GROUP_MAX_RECLAIM_STEPS 10
 
@@ -102,6 +103,11 @@ ncclResult_t ncclGroupStart() {
   ncclResult_t ret = ncclSuccess;
   NCCL_NVTX3_FUNC_RANGE;
 
+  DAG_TRACE_IF({
+    ncclDagEmit(DagLayerAPI, DagEvGroupStart, DAG_INVALID_NODE,
+                0, 0, -1, -1, 0, 0, 0, "GroupStart");
+  });
+
   NCCLCHECK(ncclGroupStartInternal());
   TRACE_CALL("ncclGroupStart()");
   return ret;
@@ -112,6 +118,12 @@ ncclResult_t ncclGroupEnd() {
   ncclResult_t ret = ncclSuccess;
   NCCL_NVTX3_FUNC_RANGE;
   NCCLCHECKGOTO(ncclGroupEndInternal(), ret, exit);
+
+  DAG_TRACE_IF({
+    ncclDagEmit(DagLayerAPI, DagEvGroupEnd, DAG_INVALID_NODE,
+                0, 0, -1, -1, 0, 0, 0, "GroupEnd");
+  });
+
   TRACE_CALL("ncclGroupEnd()");
 exit:
   return ret;

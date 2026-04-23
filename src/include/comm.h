@@ -25,6 +25,7 @@
 #include "rma/rma.h"
 #include "argcheck.h"
 #include "mem_manager.h"
+#include "dag_trace.h"
 
 #if defined(NCCL_OS_WINDOWS)
 #include "gin/gin_host_win_stub.h"
@@ -349,6 +350,9 @@ struct ncclKernelPlan {
   void* groupApiEventHandle;
   void* kernelLaunchEventHandle;
   void* groupEventHandle;
+
+  // DAG trace
+  uint64_t dagNodeId;  // DAG node id for this kernel plan
 };
 
 ////////////////////////////////////////////////////////////////////////////////

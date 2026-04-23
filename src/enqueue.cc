@@ -20,6 +20,7 @@
 #include "scheduler.h"
 #include "compiler.h"
 #include "rma/rma.h"
+#include "dag_trace.h"
 
 #include <cstring> // std::memcpy
 #include <cinttypes> // PRIx64
@@ -104,6 +105,11 @@ static inline int ncclFuncTrafficPerByte(ncclFunc_t func, int nRanks) {
 /*****************************************************************************/
 
 ncclResult_t ncclAddProxyOpIfNeeded(struct ncclComm* comm, struct ncclKernelPlan* plan, struct ncclProxyOp* op) {
+  // Carry DAG node id from the plan to the proxy op
+  DAG_TRACE_IF({
+    op->dagParentNodeId = plan->dagNodeId;
+  });
+
   bool needed = true;
   NCCLCHECK(ncclProxySaveOp(comm, op, &needed));
   if (needed) {
@@ -1778,6 +1784,15 @@ ncclResult_t ncclLaunchKernel(struct ncclComm* comm, struct ncclKernelPlan* plan
 
 do_return:
   NCCLCHECK(ncclProfilerStopKernelLaunchEvent(plan));
+
+  DAG_TRACE_IF({
+    plan->dagNodeId = ncclDagEmit(
+      DagLayerKernel, DagEvKernelLaunch, DAG_INVALID_NODE,
+      0, (uint32_t)plan->comm->commHash,
+      -1, -1, 0, 0,
+      0, \"KernelLaunch\");
+  });
+
   return ret;
 }
 
@@ -3046,6 +3061,14 @@ ncclResult_t ncclEnqueueCheck(struct ncclInfo* info) {
   TRACE_CALL("nccl%s(%" PRIx64 ",%" PRIx64 ",%zu,%d,%d,%d,%p,%p)", info->opName, reinterpret_cast<int64_t>(info->sendbuff), reinterpret_cast<int64_t>(info->recvbuff), info->count, info->datatype, info->op, info->root, info->comm, info->stream);
 
   NCCLCHECKGOTO(taskAppend(info->comm, info), ret, fail);
+
+  DAG_TRACE_IF({
+    info->dagNodeId = ncclDagEmit(
+      DagLayerAPI, DagEvCollEnqueue, DAG_INVALID_NODE,
+      info->comm->opCount, (uint32_t)info->comm->commHash,
+      -1, -1, 0, 0,
+      info->count * ncclTypeSize(info->datatype), info->opName);
+  });
 
 exit:
   if (devOld != -1) CUDACHECK(cudaSetDevice(devOld));

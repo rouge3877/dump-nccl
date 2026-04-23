@@ -12,6 +12,7 @@
 #include "collectives.h"
 #include "core.h"
 #include "utils.h"
+#include "dag_trace.h"
 
 // Used to pass NCCL call information between functions
 struct ncclInfo {
@@ -38,6 +39,9 @@ struct ncclInfo {
   // WaitSignal descriptors
   int nDesc;
   ncclWaitSignalDesc_t* signalDescs;
+
+  // DAG trace
+  uint64_t dagNodeId;  // DAG node id for this collective enqueue
 };
 
 #endif
