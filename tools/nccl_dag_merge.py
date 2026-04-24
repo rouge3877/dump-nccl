@@ -34,8 +34,7 @@ def load_traces(file_paths):
                 try:
                     node = json.loads(line)
                 except json.JSONDecodeError as e:
-                    print(f"WARNING: {path}:{lineno}: bad JSON: {e}",
-                          file=sys.stderr)
+                    print(f"WARNING: {path}:{lineno}: bad JSON: {e}", file=sys.stderr)
                     continue
                 node["rank"] = rank
                 node["sourceFile"] = os.path.basename(path)
@@ -78,15 +77,17 @@ def build_cross_rank_edges(nodes):
         if candidates:
             # Match the earliest unmatched send
             send_node = candidates.pop(0)
-            edges.append({
-                "from_rank": send_rank,
-                "from_id": send_node["id"],
-                "to_rank": recv_rank,
-                "to_id": n["id"],
-                "opCount": n["opCount"],
-                "ch": n["ch"],
-                "type": "cross_rank",
-            })
+            edges.append(
+                {
+                    "from_rank": send_rank,
+                    "from_id": send_node["id"],
+                    "to_rank": recv_rank,
+                    "to_id": n["id"],
+                    "opCount": n["opCount"],
+                    "ch": n["ch"],
+                    "type": "cross_rank",
+                }
+            )
     return edges
 
 
@@ -103,8 +104,10 @@ def write_merged_json(nodes, edges, output_path):
     }
     with open(output_path, "w") as f:
         json.dump(merged, f, indent=2)
-    print(f"Merged DAG written to {output_path} "
-          f"({len(nodes)} nodes, {len(edges)} cross-rank edges)")
+    print(
+        f"Merged DAG written to {output_path} "
+        f"({len(nodes)} nodes, {len(edges)} cross-rank edges)"
+    )
 
 
 def write_chrome_trace(nodes, edges, output_path):
@@ -144,39 +147,52 @@ def write_chrome_trace(nodes, edges, output_path):
     for i, edge in enumerate(edges):
         flow_id = f"xr_{i}"
         # start (send side)
-        trace_events.append({
-            "name": "cross_rank",
-            "cat": "cross_rank",
-            "ph": "s",
-            "id": flow_id,
-            "ts": _find_ts(nodes, edge["from_rank"], edge["from_id"], ts_base),
-            "pid": edge["from_rank"],
-            "tid": _layer_tid("proxy"),
-        })
+        trace_events.append(
+            {
+                "name": "cross_rank",
+                "cat": "cross_rank",
+                "ph": "s",
+                "id": flow_id,
+                "ts": _find_ts(nodes, edge["from_rank"], edge["from_id"], ts_base),
+                "pid": edge["from_rank"],
+                "tid": _layer_tid("proxy"),
+            }
+        )
         # end (recv side)
-        trace_events.append({
-            "name": "cross_rank",
-            "cat": "cross_rank",
-            "ph": "f",
-            "id": flow_id,
-            "bp": "e",
-            "ts": _find_ts(nodes, edge["to_rank"], edge["to_id"], ts_base),
-            "pid": edge["to_rank"],
-            "tid": _layer_tid("proxy"),
-        })
+        trace_events.append(
+            {
+                "name": "cross_rank",
+                "cat": "cross_rank",
+                "ph": "f",
+                "id": flow_id,
+                "bp": "e",
+                "ts": _find_ts(nodes, edge["to_rank"], edge["to_id"], ts_base),
+                "pid": edge["to_rank"],
+                "tid": _layer_tid("proxy"),
+            }
+        )
 
     # Process / thread name metadata
     ranks = sorted(set(n.get("rank", 0) for n in nodes))
     for r in ranks:
-        trace_events.append({
-            "name": "process_name", "ph": "M", "pid": r,
-            "args": {"name": f"Rank {r}"},
-        })
+        trace_events.append(
+            {
+                "name": "process_name",
+                "ph": "M",
+                "pid": r,
+                "args": {"name": f"Rank {r}"},
+            }
+        )
         for layer, tid in [("api", 0), ("kernel", 1), ("proxy", 2), ("network", 3)]:
-            trace_events.append({
-                "name": "thread_name", "ph": "M", "pid": r, "tid": tid,
-                "args": {"name": layer},
-            })
+            trace_events.append(
+                {
+                    "name": "thread_name",
+                    "ph": "M",
+                    "pid": r,
+                    "tid": tid,
+                    "args": {"name": layer},
+                }
+            )
 
     with open(output_path, "w") as f:
         json.dump({"traceEvents": trace_events}, f)
@@ -208,13 +224,17 @@ def write_dot(nodes, edges, output_path):
             f.write(f'    label="Rank {r}";\n')
             rank_nodes = [n for n in nodes if n.get("rank") == r]
             for n in rank_nodes:
-                nid = f'r{r}_n{n["id"]}'
-                label = f'{n.get("event", "?")}\\n{n.get("detail", "")}'
-                color = {"api": "lightblue", "kernel": "lightyellow",
-                         "proxy": "lightgreen", "network": "lightsalmon"
-                         }.get(n.get("layer", ""), "white")
-                f.write(f'    {nid} [label="{label}", '
-                        f'style=filled, fillcolor={color}];\n')
+                nid = f"r{r}_n{n['id']}"
+                label = f"{n.get('event', '?')}\\n{n.get('detail', '')}"
+                color = {
+                    "api": "lightblue",
+                    "kernel": "lightyellow",
+                    "proxy": "lightgreen",
+                    "network": "lightsalmon",
+                }.get(n.get("layer", ""), "white")
+                f.write(
+                    f'    {nid} [label="{label}", style=filled, fillcolor={color}];\n'
+                )
             f.write("  }\n\n")
 
         # Intra-rank parent edges
@@ -222,21 +242,22 @@ def write_dot(nodes, edges, output_path):
             parent = n.get("parent")
             if parent is not None and parent != (2**64 - 1):
                 r = n.get("rank", 0)
-                f.write(f'  r{r}_n{parent} -> r{r}_n{n["id"]};\n')
+                f.write(f"  r{r}_n{parent} -> r{r}_n{n['id']};\n")
 
         # Dependency edges
         for n in nodes:
             r = n.get("rank", 0)
             for dep in n.get("deps", []):
                 if dep != (2**64 - 1):
-                    f.write(f'  r{r}_n{dep} -> r{r}_n{n["id"]} '
-                            f'[style=dashed];\n')
+                    f.write(f"  r{r}_n{dep} -> r{r}_n{n['id']} [style=dashed];\n")
 
         # Cross-rank edges
         for edge in edges:
-            f.write(f'  r{edge["from_rank"]}_n{edge["from_id"]} -> '
-                    f'r{edge["to_rank"]}_n{edge["to_id"]} '
-                    f'[color=red, style=bold, constraint=false];\n')
+            f.write(
+                f"  r{edge['from_rank']}_n{edge['from_id']} -> "
+                f"r{edge['to_rank']}_n{edge['to_id']} "
+                f"[color=red, style=bold, constraint=false];\n"
+            )
 
         f.write("}\n")
     print(f"DOT graph written to {output_path}")
@@ -354,25 +375,31 @@ def find_critical_path(nodes, edges):
     for nk in path:
         n = by_rank_id[nk]
         rel_us = (n["ts"] - ts_base) / 1000.0
-        print(f"  [{n.get('rank',0)}] +{rel_us:10.1f} µs  "
-              f"{n.get('layer','?'):8s} {n.get('event','?'):24s} "
-              f"{n.get('detail','')}")
+        print(
+            f"  [{n.get('rank', 0)}] +{rel_us:10.1f} µs  "
+            f"{n.get('layer', '?'):8s} {n.get('event', '?'):24s} "
+            f"{n.get('detail', '')}"
+        )
     total_us = (by_rank_id[end_nk]["ts"] - ts_base) / 1000.0
     print(f"\n  Total critical path duration: {total_us:.1f} µs")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Merge and analyze NCCL DAG trace files")
+        description="Merge and analyze NCCL DAG trace files"
+    )
     parser.add_argument("files", nargs="+", help="Input .jsonl trace files")
     parser.add_argument("-o", "--output", help="Write merged JSON to this file")
-    parser.add_argument("--chrome-trace",
-                        help="Export Chrome trace format to this file")
+    parser.add_argument(
+        "--chrome-trace", help="Export Chrome trace format to this file"
+    )
     parser.add_argument("--dot", help="Export DOT graph to this file")
-    parser.add_argument("--summary", action="store_true",
-                        help="Print summary statistics")
-    parser.add_argument("--critical-path", action="store_true",
-                        help="Find and print the critical path")
+    parser.add_argument(
+        "--summary", action="store_true", help="Print summary statistics"
+    )
+    parser.add_argument(
+        "--critical-path", action="store_true", help="Find and print the critical path"
+    )
     args = parser.parse_args()
 
     nodes = load_traces(args.files)
@@ -393,8 +420,9 @@ def main():
     if args.critical_path:
         find_critical_path(nodes, edges)
 
-    if not any([args.output, args.chrome_trace, args.dot,
-                args.summary, args.critical_path]):
+    if not any(
+        [args.output, args.chrome_trace, args.dot, args.summary, args.critical_path]
+    ):
         print_summary(nodes, edges)
 
 
