@@ -1790,7 +1790,7 @@ do_return:
       DagLayerKernel, DagEvKernelLaunch, DAG_INVALID_NODE,
       0, (uint32_t)plan->comm->commHash,
       -1, -1, 0, 0,
-      0, \"KernelLaunch\");
+      0, "KernelLaunch");
   });
 
   return ret;
