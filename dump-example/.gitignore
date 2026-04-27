@@ -1,0 +1,6 @@
+traces/
+*
+!minimal_ar_ag.cu
+!README.md
+!run_dump.sh
+!.gitignore
